@@ -50,6 +50,19 @@
         .overflow-y-auto::-webkit-scrollbar-thumb:hover {
             background: #6a1ba7;
         }
+
+        /* Styling for overdue task warning */
+        .overdue-warning {
+            color: #ef4444; /* Red color */
+            font-weight: bold;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
     </style>
 </head>
 <body class="selection:bg-purple-300 selection:text-purple-900">
@@ -76,6 +89,14 @@
                 </div>
                 <p class="text-lg font-medium text-gray-600 mt-2">
                     Running Tasks: <span id="concurrent-tasks-display">0</span> / <span id="max-concurrent-tasks-display">3</span>
+                </p>
+                <!-- Special Boost Display -->
+                <p id="special-boost-display" class="text-md font-bold text-green-700 mt-2 hidden">
+                    Special Boost Active! <span id="boost-timer"></span>s remaining
+                </p>
+                 <!-- Software Update Overdue Warning -->
+                <p id="software-update-overdue-warning" class="text-md font-bold text-red-600 mt-2 overdue-warning hidden">
+                    SOFTWARE UPDATE OVERDUE!
                 </p>
             </div>
 
@@ -143,7 +164,15 @@
             taskCompletionSpeed: 1, // Multiplier for task progress
             completedTasksCount: 0, // Counter for completed tasks for achievements
             boughtUpgrades: [], // Array to track bought upgrade IDs for achievements
-            gameOver: false
+            gameOver: false,
+            // New state for special boosts
+            activeBoost: null, // Stores { type: 'speed'|'cooling', duration: N }
+            boostTimer: 0, // Countdown for active boost
+
+            // Software Update Compulsory State
+            softwareUpdateOverdue: false,
+            softwareUpdateCooldownRemaining: 60, // 60 seconds after completion before it becomes overdue
+            softwareUpdateOverduePenaltyPerSec: 2 // Temp increase per second if overdue
         };
 
         // Get references to DOM elements
@@ -153,6 +182,9 @@
         const tempBar = document.getElementById('temp-bar');
         const concurrentTasksDisplay = document.getElementById('concurrent-tasks-display');
         const maxConcurrentTasksDisplay = document.getElementById('max-concurrent-tasks-display');
+        const specialBoostDisplay = document.getElementById('special-boost-display');
+        const boostTimerDisplay = document.getElementById('boost-timer');
+        const softwareUpdateOverdueWarning = document.getElementById('software-update-overdue-warning');
         const activeTasksContainer = document.getElementById('active-tasks-container');
         const noActiveTasksMessage = document.getElementById('no-active-tasks');
         const availableTasksContainer = document.getElementById('available-tasks-container');
@@ -169,12 +201,30 @@
             {
                 id: 'browse-web',
                 name: 'Browse Web',
-                description: 'Casual browsing, light CPU load.',
+                description: 'Casual browsing, light CPU load. May find a special boost!',
                 baseDuration: 10, // seconds to complete
                 tempIncrease: 1, // temp increase per second while active
                 reward: 20, // money reward on completion
                 active: false,
                 progress: 0, // current progress towards completion
+                specialEffect: { // New property for special effects
+                    chance: 0.25, // 25% chance for a special effect
+                    effects: [
+                        { type: 'money', value: 50, message: 'Found bonus cash while browsing!' },
+                        { type: 'speedBoost', value: 0.5, duration: 10, message: 'Optimized Browsing! Task speed temporarily increased.' },
+                        { type: 'coolingBoost', value: 1.0, duration: 10, message: 'Found a Cooling Guide! Cooling efficiency temporarily improved.' }
+                    ]
+                }
+            },
+            {
+                id: 'software-update',
+                name: 'Software Update',
+                description: 'Essential maintenance, keeps system healthy. MUST BE DONE!',
+                baseDuration: 15,
+                tempIncrease: 2,
+                reward: 35,
+                active: false,
+                progress: 0,
             },
             {
                 id: 'word-processing',
@@ -183,6 +233,16 @@
                 baseDuration: 20,
                 tempIncrease: 2,
                 reward: 50,
+                active: false,
+                progress: 0,
+            },
+            {
+                id: 'data-analysis',
+                name: 'Data Analysis',
+                description: 'Crunching numbers and complex data sets.',
+                baseDuration: 30,
+                tempIncrease: 4,
+                reward: 120,
                 active: false,
                 progress: 0,
             },
@@ -228,6 +288,14 @@
                 level: 0
             },
             {
+                id: 'advanced-thermal-paste',
+                name: 'Advanced Thermal Paste',
+                description: 'Enhances heat transfer, better cooling.',
+                cost: 250,
+                effect: { coolingEfficiency: 1.0 },
+                level: 0
+            },
+            {
                 id: 'faster-ssd',
                 name: 'Faster SSD',
                 description: 'Speeds up task completion.',
@@ -249,6 +317,14 @@
                 description: 'Massively boosts task completion speed.',
                 cost: 1000,
                 effect: { taskCompletionSpeed: 0.25 },
+                level: 0
+            },
+            {
+                id: 'quantum-processor',
+                name: 'Quantum Processor',
+                description: 'Cutting-edge tech for extreme speed.',
+                cost: 3000,
+                effect: { taskCompletionSpeed: 0.5 },
                 level: 0
             },
             {
@@ -285,16 +361,49 @@
                 unlocked: false
             },
             {
+                id: 'efficient-surfer',
+                name: 'Efficient Surfer',
+                description: 'Complete 10 "Browse Web" tasks.',
+                criteria: { completedTaskType: { 'browse-web': 10 } },
+                unlocked: false,
+                currentCount: { 'browse-web': 0 } // Tracks specific task completion
+            },
+            {
+                id: 'overclocker',
+                name: 'Overclocker',
+                description: 'Buy Octa-Core CPU and Quantum Processor.',
+                criteria: { upgradesBought: ['octa-core-cpu', 'quantum-processor'] },
+                unlocked: false
+            },
+            {
                 id: 'tech-guru',
                 name: 'Tech Guru',
                 description: 'Reach $5000 money.',
                 criteria: { money: 5000 },
                 unlocked: false
+            },
+            {
+                id: 'master-manager',
+                name: 'Master Manager',
+                description: 'Earn $10,000.',
+                criteria: { money: 10000 },
+                unlocked: false
+            },
+            {
+                id: 'software-pro',
+                name: 'Software Pro',
+                description: 'Complete "Software Update" 5 times.',
+                criteria: { completedTaskType: { 'software-update': 5 } },
+                unlocked: false,
+                currentCount: { 'software-update': 0 }
             }
         ];
 
         let maxConcurrentTasks = 3; // Initial maximum number of tasks that can run simultaneously
         let gameLoopInterval; // Declare globally to manage clearing/setting
+
+        // Get the software update task for easier access
+        const softwareUpdateTask = tasks.find(t => t.id === 'software-update');
 
         /**
          * Resets the game state to initial values.
@@ -312,7 +421,12 @@
                 taskCompletionSpeed: 1,
                 completedTasksCount: 0,
                 boughtUpgrades: [],
-                gameOver: false
+                gameOver: false,
+                activeBoost: null,
+                boostTimer: 0,
+                softwareUpdateOverdue: false,
+                softwareUpdateCooldownRemaining: 60,
+                softwareUpdateOverduePenaltyPerSec: 2
             };
 
             tasks.forEach(task => {
@@ -324,14 +438,24 @@
                 upgrade.level = 0;
                 // Reset cost for upgrades for a full game restart if needed
                 if (upgrade.id === 'better-fan') upgrade.cost = 100;
+                if (upgrade.id === 'advanced-thermal-paste') upgrade.cost = 250;
                 if (upgrade.id === 'faster-ssd') upgrade.cost = 150;
                 if (upgrade.id === 'liquid-cooling') upgrade.cost = 500;
                 if (upgrade.id === 'octa-core-cpu') upgrade.cost = 1000;
+                if (upgrade.id === 'quantum-processor') upgrade.cost = 3000;
                 if (upgrade.id === 'server-rack') upgrade.cost = 2000;
             });
 
             achievements.forEach(achievement => {
                 achievement.unlocked = false;
+                // Reset specific task completion counts for achievements
+                if (achievement.criteria.completedTaskType) {
+                    for (const taskId in achievement.currentCount) {
+                        if (achievement.currentCount.hasOwnProperty(taskId)) {
+                            achievement.currentCount[taskId] = 0;
+                        }
+                    }
+                }
             });
 
             maxConcurrentTasks = 3; // Reset to initial 3 concurrent tasks
@@ -341,6 +465,8 @@
             renderUpgrades();
             renderAchievements(); // Re-render achievements on reset
             hideMessageBox();
+            specialBoostDisplay.classList.add('hidden'); // Hide boost display on reset
+            softwareUpdateOverdueWarning.classList.add('hidden'); // Hide overdue warning on reset
 
             // Start a new game loop after resetting everything
             gameLoopInterval = setInterval(gameLoop, 1000);
@@ -378,6 +504,47 @@
         }
 
         /**
+         * Applies a special boost to game stats.
+         * @param {object} boost - The boost object from task.specialEffect.effects.
+         */
+        function applyBoost(boost) {
+            // If a boost is already active, reset its timer or replace it
+            if (gameState.activeBoost) {
+                removeBoost(gameState.activeBoost); // Ensure previous boost effects are reverted
+            }
+
+            gameState.activeBoost = boost;
+            gameState.boostTimer = boost.duration;
+            specialBoostDisplay.classList.remove('hidden');
+
+            if (boost.type === 'speedBoost') {
+                gameState.taskCompletionSpeed += boost.value;
+                specialBoostDisplay.querySelector('#boost-timer').textContent = `${boost.duration}s (Speed)`;
+            } else if (boost.type === 'coolingBoost') {
+                gameState.coolingEfficiency += boost.value;
+                specialBoostDisplay.querySelector('#boost-timer').textContent = `${boost.duration}s (Cooling)`;
+            }
+
+            showMessageBox('Special Bonus!', boost.message);
+        }
+
+        /**
+         * Removes a special boost effect.
+         * @param {object} boost - The boost object to remove.
+         */
+        function removeBoost(boost) {
+            if (boost.type === 'speedBoost') {
+                gameState.taskCompletionSpeed -= boost.value;
+            } else if (boost.type === 'coolingBoost') {
+                gameState.coolingEfficiency -= boost.value;
+            }
+            gameState.activeBoost = null;
+            gameState.boostTimer = 0;
+            specialBoostDisplay.classList.add('hidden');
+        }
+
+
+        /**
          * Updates all display elements (money, CPU temp, active tasks, upgrades).
          */
         function updateDisplay() {
@@ -401,6 +568,23 @@
             concurrentTasksDisplay.textContent = activeTaskCount;
             maxConcurrentTasksDisplay.textContent = maxConcurrentTasks;
 
+            // Update boost timer display if active
+            if (gameState.activeBoost) {
+                specialBoostDisplay.classList.remove('hidden');
+                let boostType = gameState.activeBoost.type === 'speedBoost' ? 'Speed' : 'Cooling';
+                boostTimerDisplay.textContent = `${gameState.boostTimer}s (${boostType})`;
+            } else {
+                specialBoostDisplay.classList.add('hidden');
+            }
+
+            // Update software update overdue warning display
+            if (gameState.softwareUpdateOverdue) {
+                softwareUpdateOverdueWarning.classList.remove('hidden');
+            } else {
+                softwareUpdateOverdueWarning.classList.add('hidden');
+            }
+
+
             renderActiveTasks();
             renderAvailableTasks(); // To update 'Start' button states
             renderUpgrades(); // To update 'Buy' button states
@@ -422,6 +606,12 @@
                     'flex', 'flex-col', 'items-start', 'text-left',
                     'border-2', 'border-green-200'
                 );
+
+                // Add special styling for overdue software update task
+                if (task.id === 'software-update' && gameState.softwareUpdateOverdue) {
+                    taskElement.classList.add('border-red-500', 'bg-red-50', 'overdue-task-item');
+                }
+
                 taskElement.innerHTML = `
                     <h3 class="text-xl font-semibold text-gray-800">${task.name}</h3>
                     <p class="text-sm text-gray-600 mb-2">${task.description}</p>
@@ -573,6 +763,11 @@
                 task.active = true;
                 task.progress = 0;
                 gameState.tempPerSecond += task.tempIncrease; // Add task's temp increase to overall
+
+                // If starting software update, remove overdue status
+                if (taskId === 'software-update' && gameState.softwareUpdateOverdue) {
+                    gameState.softwareUpdateOverdue = false;
+                }
                 updateDisplay();
             } else if (activeTaskCount >= maxConcurrentTasks) {
                 showMessageBox('Too Many Tasks!', `You can only run ${maxConcurrentTasks} task(s) at a time. Buy "Server Rack" upgrades to run more!`);
@@ -581,12 +776,40 @@
 
         /**
          * Completes a task, awards money, and resets its state.
+         * Also checks for special effects from the task.
          * @param {object} task - The task object.
          */
         function completeTask(task) {
             gameState.money += task.reward;
             gameState.tempPerSecond -= task.tempIncrease; // Remove task's temp increase
             gameState.completedTasksCount++; // Increment completed tasks for achievements
+
+            // Update specific task completion counts for achievements
+            achievements.forEach(ach => {
+                if (ach.criteria.completedTaskType && ach.criteria.completedTaskType[task.id]) {
+                    if (ach.currentCount && ach.currentCount.hasOwnProperty(task.id)) {
+                        ach.currentCount[task.id]++;
+                    }
+                }
+            });
+
+            // If software update completed, reset its cooldown
+            if (task.id === 'software-update') {
+                gameState.softwareUpdateCooldownRemaining = 60; // Reset to 60 seconds
+            }
+
+            // Check for special effects
+            if (task.specialEffect) {
+                if (Math.random() < task.specialEffect.chance) {
+                    const chosenEffect = task.specialEffect.effects[Math.floor(Math.random() * task.specialEffect.effects.length)];
+                    if (chosenEffect.type === 'money') {
+                        gameState.money += chosenEffect.value;
+                        showMessageBox('Special Bonus!', chosenEffect.message + ` You gained $${chosenEffect.value}.`);
+                    } else if (chosenEffect.type === 'speedBoost' || chosenEffect.type === 'coolingBoost') {
+                        applyBoost(chosenEffect);
+                    }
+                }
+            }
 
             task.active = false;
             task.progress = 0;
@@ -608,7 +831,10 @@
             if (upgrade && gameState.money >= upgrade.cost) {
                 gameState.money -= upgrade.cost;
                 upgrade.level++;
-                gameState.boughtUpgrades.push(upgrade.id); // Track bought upgrade for achievements
+                // Add to boughtUpgrades only if not already present
+                if (!gameState.boughtUpgrades.includes(upgrade.id)) {
+                    gameState.boughtUpgrades.push(upgrade.id);
+                }
 
                 // Apply upgrade effects
                 if (upgrade.effect.coolingEfficiency) {
@@ -659,6 +885,22 @@
                     if (achievement.criteria.upgradeBought && gameState.boughtUpgrades.includes(achievement.criteria.upgradeBought)) {
                         unlockedNow = true;
                     }
+                    if (achievement.criteria.upgradesBought) { // For achievements requiring multiple upgrades
+                        const allRequiredBought = achievement.criteria.upgradesBought.every(id => gameState.boughtUpgrades.includes(id));
+                        if (allRequiredBought) unlockedNow = true;
+                    }
+                    if (achievement.criteria.completedTaskType) { // For achievements requiring specific task completions
+                        let allSpecificTasksMet = true;
+                        for (const taskId in achievement.criteria.completedTaskType) {
+                            if (achievement.criteria.completedTaskType.hasOwnProperty(taskId)) {
+                                if (achievement.currentCount[taskId] < achievement.criteria.completedTaskType[taskId]) {
+                                    allSpecificTasksMet = false;
+                                    break;
+                                }
+                            }
+                        }
+                        if (allSpecificTasksMet) unlockedNow = true;
+                    }
 
                     if (unlockedNow) {
                         achievement.unlocked = true;
@@ -677,13 +919,28 @@
         function gameLoop() {
             if (gameState.gameOver) return;
 
-            // Temperature management
-            gameState.cpuTemp += gameState.tempPerSecond; // Increase temp from active tasks
-            gameState.cpuTemp -= gameState.coolingEfficiency; // Decrease temp from cooling
+            // Software Update Compulsory Logic
+            if (!softwareUpdateTask.active) { // If software update is not currently running
+                if (gameState.softwareUpdateCooldownRemaining > 0) {
+                    gameState.softwareUpdateCooldownRemaining--;
+                } else if (!gameState.softwareUpdateOverdue) {
+                    gameState.softwareUpdateOverdue = true;
+                    showMessageBox('Warning!', 'Software Update Overdue! Your system is running inefficiently. Complete the "Software Update" task quickly to avoid further issues!');
+                }
+            }
 
-            // Ensure temp doesn't go below 0
-            if (gameState.cpuTemp < 0) {
-                gameState.cpuTemp = 0;
+            // Temperature management
+            let currentTempIncrease = gameState.tempPerSecond;
+            if (gameState.softwareUpdateOverdue) {
+                currentTempIncrease += gameState.softwareUpdateOverduePenaltyPerSec; // Apply penalty
+            }
+            
+            gameState.cpuTemp += currentTempIncrease;
+            gameState.cpuTemp -= gameState.coolingEfficiency;
+
+            // Ensure temp doesn't go below minimum
+            if (gameState.cpuTemp < 20) { // CPU Temp minimum set to 20 degrees
+                gameState.cpuTemp = 20;
             }
 
             checkCpuTemp();
@@ -697,6 +954,14 @@
                     }
                 }
             });
+
+            // Handle active boost duration
+            if (gameState.activeBoost) {
+                gameState.boostTimer--;
+                if (gameState.boostTimer <= 0) {
+                    removeBoost(gameState.activeBoost);
+                }
+            }
 
             updateDisplay();
             checkAchievements(); // Check achievements every tick
