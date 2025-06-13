@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Computer Management Game</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles for the Inter font and overall body */
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(to right bottom, #4A00E0, #8E2DE2); /* Deep Purple to Electric Violet */
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #333;
+        }
+
+        /* Custom styles for temperature bar */
+        .temp-bar-inner {
+            transition: width 0.5s ease-out, background-color 0.5s ease-out;
+        }
+
+        /* Disable button styling */
+        .disabled-button {
+            opacity: 0.6;
+            cursor: not-allowed;
+            filter: grayscale(100%);
+        }
+
+        /* Scrollbar styling for upgrades/tasks list */
+        .overflow-y-auto::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .overflow-y-auto::-webkit-scrollbar-track {
+            background: #e0e0e0;
+            border-radius: 10px;
+        }
+
+        .overflow-y-auto::-webkit-scrollbar-thumb {
+            background: #8e2de2;
+            border-radius: 10px;
+        }
+
+        .overflow-y-auto::-webkit-scrollbar-thumb:hover {
+            background: #6a1ba7;
+        }
+    </style>
+</head>
+<body class="selection:bg-purple-300 selection:text-purple-900">
+    <!-- Main game container -->
+    <div class="game-container bg-white bg-opacity-95 p-6 md:p-8 rounded-2xl shadow-2xl text-center max-w-4xl w-11/12 mx-auto transform transition-all duration-300 hover:scale-[1.01] border-4 border-white border-opacity-30 flex flex-col lg:flex-row gap-6">
+
+        <!-- Left Column: Stats, Active Tasks, and Achievements -->
+        <div class="flex-1 flex flex-col items-center justify-start min-h-[400px]">
+            <h1 class="text-4xl md:text-5xl font-extrabold text-gray-800 mb-6 drop-shadow-md">
+                PC Manager
+            </h1>
+
+            <!-- Stats Display -->
+            <div class="w-full bg-blue-50 rounded-xl p-4 mb-6 shadow-inner">
+                <p class="text-2xl font-bold text-blue-700 mb-2">
+                    Money: $<span id="money-display">0</span>
+                </p>
+                <p class="text-xl font-medium text-gray-600 mb-2">
+                    CPU Temp: <span id="cpu-temp-display">30</span>°C / <span id="max-cpu-temp-display">100</span>°C
+                </p>
+                <!-- CPU Temperature Bar -->
+                <div class="w-full bg-gray-200 rounded-full h-4 relative overflow-hidden mt-2">
+                    <div id="temp-bar" class="temp-bar-inner h-full rounded-full" style="width: 0%; background-color: #4CAF50;"></div>
+                </div>
+                <p class="text-lg font-medium text-gray-600 mt-2">
+                    Running Tasks: <span id="concurrent-tasks-display">0</span> / <span id="max-concurrent-tasks-display">3</span>
+                </p>
+            </div>
+
+            <!-- Active Tasks Section -->
+            <div class="w-full bg-gray-50 rounded-xl p-4 shadow-inner flex-grow overflow-y-auto max-h-[250px] lg:max-h-[unset]">
+                <h2 class="text-2xl font-bold text-gray-800 mb-4">Active Tasks</h2>
+                <div id="active-tasks-container" class="grid grid-cols-1 gap-3">
+                    <p id="no-active-tasks" class="text-gray-500 italic">No tasks running.</p>
+                </div>
+            </div>
+
+            <!-- Achievements Section -->
+            <div class="w-full bg-yellow-50 rounded-xl p-4 shadow-inner mt-6 flex-grow overflow-y-auto max-h-[200px] lg:max-h-[unset]">
+                <h2 class="text-2xl font-bold text-gray-800 mb-4">Achievements</h2>
+                <div id="achievements-container" class="grid grid-cols-1 gap-3">
+                    <p id="no-achievements" class="text-gray-500 italic">No achievements unlocked yet.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Column: Available Tasks and Upgrades -->
+        <div class="flex-1 flex flex-col items-center justify-start min-h-[400px]">
+            <!-- Available Tasks Section -->
+            <div class="w-full bg-green-50 rounded-xl p-4 shadow-inner mb-6 flex-grow overflow-y-auto max-h-[250px]">
+                <h2 class="text-2xl font-bold text-gray-800 mb-4">Available Tasks</h2>
+                <div id="available-tasks-container" class="grid grid-cols-1 gap-3">
+                    <!-- Available tasks will be dynamically added here -->
+                </div>
+            </div>
+
+            <!-- Upgrades Section -->
+            <div class="w-full bg-purple-50 rounded-xl p-4 shadow-inner flex-grow overflow-y-auto max-h-[250px] lg:max-h-[unset]">
+                <h2 class="text-2xl font-bold text-gray-800 mb-4">Upgrades</h2>
+                <div id="upgrades-container" class="grid grid-cols-1 gap-3">
+                    <!-- Upgrades will be dynamically added here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Message Box / Game Over Modal -->
+    <div id="message-box" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4 z-50 hidden">
+        <div class="bg-white p-8 rounded-lg shadow-xl text-center max-w-sm w-full">
+            <h3 id="message-box-title" class="text-3xl font-bold text-red-600 mb-4">Game Over!</h3>
+            <p id="message-box-content" class="text-lg text-gray-700 mb-6">Your CPU overheated!</p>
+            <button id="message-box-close" class="bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-6 rounded-full transition-colors duration-200">
+                Restart Game
+            </button>
+        </div>
+    </div>
+
+    <!-- A small footer/credit -->
+    <p class="text-gray-500 text-sm absolute bottom-4">
+        Computer Management Game by your friendly AI.
+    </p>
+
+    <script>
+        // Game state variables
+        let gameState = {
+            money: 0,
+            cpuTemp: 30, // Starting temperature
+            maxCpuTemp: 100, // Max safe temperature
+            tempPerSecond: 0, // Base temperature increase per second from running tasks
+            coolingEfficiency: 0.5, // How much temp decreases passively per second
+            taskCompletionSpeed: 1, // Multiplier for task progress
+            completedTasksCount: 0, // Counter for completed tasks for achievements
+            boughtUpgrades: [], // Array to track bought upgrade IDs for achievements
+            gameOver: false
+        };
+
+        // Get references to DOM elements
+        const moneyDisplay = document.getElementById('money-display');
+        const cpuTempDisplay = document.getElementById('cpu-temp-display');
+        const maxCpuTempDisplay = document.getElementById('max-cpu-temp-display');
+        const tempBar = document.getElementById('temp-bar');
+        const concurrentTasksDisplay = document.getElementById('concurrent-tasks-display');
+        const maxConcurrentTasksDisplay = document.getElementById('max-concurrent-tasks-display');
+        const activeTasksContainer = document.getElementById('active-tasks-container');
+        const noActiveTasksMessage = document.getElementById('no-active-tasks');
+        const availableTasksContainer = document.getElementById('available-tasks-container');
+        const upgradesContainer = document.getElementById('upgrades-container');
+        const achievementsContainer = document.getElementById('achievements-container');
+        const noAchievementsMessage = document.getElementById('no-achievements');
+        const messageBox = document.getElementById('message-box');
+        const messageBoxTitle = document.getElementById('message-box-title');
+        const messageBoxContent = document.getElementById('message-box-content');
+        const messageBoxCloseButton = document.getElementById('message-box-close');
+
+        // Define game data: tasks and upgrades
+        const tasks = [
+            {
+                id: 'browse-web',
+                name: 'Browse Web',
+                description: 'Casual browsing, light CPU load.',
+                baseDuration: 10, // seconds to complete
+                tempIncrease: 1, // temp increase per second while active
+                reward: 20, // money reward on completion
+                active: false,
+                progress: 0, // current progress towards completion
+            },
+            {
+                id: 'word-processing',
+                name: 'Word Processing',
+                description: 'Writing documents, moderate CPU.',
+                baseDuration: 20,
+                tempIncrease: 2,
+                reward: 50,
+                active: false,
+                progress: 0,
+            },
+            {
+                id: 'video-rendering',
+                name: 'Video Rendering',
+                description: 'Intensive video encoding, high CPU load.',
+                baseDuration: 40,
+                tempIncrease: 5,
+                reward: 200,
+                active: false,
+                progress: 0,
+            },
+            {
+                id: 'game-dev',
+                name: 'Game Development',
+                description: 'Compiling code, very high CPU load.',
+                baseDuration: 60,
+                tempIncrease: 8,
+                reward: 500,
+                active: false,
+                progress: 0,
+            },
+            {
+                id: 'ai-training',
+                name: 'AI Model Training',
+                description: 'Max out your CPU! Extreme computations.',
+                baseDuration: 90,
+                tempIncrease: 15,
+                reward: 1500,
+                active: false,
+                progress: 0,
+            }
+        ];
+
+        const upgrades = [
+            {
+                id: 'better-fan',
+                name: 'Better Fan',
+                description: 'Improves cooling.',
+                cost: 100,
+                effect: { coolingEfficiency: 0.5 }, // Additional cooling per second
+                level: 0
+            },
+            {
+                id: 'faster-ssd',
+                name: 'Faster SSD',
+                description: 'Speeds up task completion.',
+                cost: 150,
+                effect: { taskCompletionSpeed: 0.1 }, // Multiplier for task progress
+                level: 0
+            },
+            {
+                id: 'liquid-cooling',
+                name: 'Liquid Cooling',
+                description: 'Significantly better cooling.',
+                cost: 500,
+                effect: { coolingEfficiency: 2 },
+                level: 0
+            },
+            {
+                id: 'octa-core-cpu',
+                name: 'Octa-Core CPU',
+                description: 'Massively boosts task completion speed.',
+                cost: 1000,
+                effect: { taskCompletionSpeed: 0.25 },
+                level: 0
+            },
+            {
+                id: 'server-rack',
+                name: 'Server Rack',
+                description: 'Allows more tasks to run simultaneously.',
+                cost: 2000,
+                effect: { maxActiveTasks: 1 }, // Special effect: allows 1 more active task
+                level: 0
+            }
+        ];
+
+        // Define achievements
+        const achievements = [
+            {
+                id: 'first-buck',
+                name: 'First Buck',
+                description: 'Earn $100.',
+                criteria: { money: 100 },
+                unlocked: false
+            },
+            {
+                id: 'pro-gamer',
+                name: 'Pro Gamer',
+                description: 'Complete 5 tasks.',
+                criteria: { completedTasks: 5 },
+                unlocked: false
+            },
+            {
+                id: 'cool-as-ice',
+                name: 'Cool as Ice',
+                description: 'Buy a Liquid Cooling upgrade.',
+                criteria: { upgradeBought: 'liquid-cooling' },
+                unlocked: false
+            },
+            {
+                id: 'tech-guru',
+                name: 'Tech Guru',
+                description: 'Reach $5000 money.',
+                criteria: { money: 5000 },
+                unlocked: false
+            }
+        ];
+
+        let maxConcurrentTasks = 3; // Initial maximum number of tasks that can run simultaneously
+        let gameLoopInterval; // Declare globally to manage clearing/setting
+
+        /**
+         * Resets the game state to initial values.
+         */
+        function resetGame() {
+            // Clear any existing game loop to prevent multiple loops running
+            clearInterval(gameLoopInterval);
+
+            gameState = {
+                money: 0,
+                cpuTemp: 30,
+                maxCpuTemp: 100,
+                tempPerSecond: 0,
+                coolingEfficiency: 0.5,
+                taskCompletionSpeed: 1,
+                completedTasksCount: 0,
+                boughtUpgrades: [],
+                gameOver: false
+            };
+
+            tasks.forEach(task => {
+                task.active = false;
+                task.progress = 0;
+            });
+
+            upgrades.forEach(upgrade => {
+                upgrade.level = 0;
+                // Reset cost for upgrades for a full game restart if needed
+                if (upgrade.id === 'better-fan') upgrade.cost = 100;
+                if (upgrade.id === 'faster-ssd') upgrade.cost = 150;
+                if (upgrade.id === 'liquid-cooling') upgrade.cost = 500;
+                if (upgrade.id === 'octa-core-cpu') upgrade.cost = 1000;
+                if (upgrade.id === 'server-rack') upgrade.cost = 2000;
+            });
+
+            achievements.forEach(achievement => {
+                achievement.unlocked = false;
+            });
+
+            maxConcurrentTasks = 3; // Reset to initial 3 concurrent tasks
+
+            updateDisplay();
+            renderAvailableTasks();
+            renderUpgrades();
+            renderAchievements(); // Re-render achievements on reset
+            hideMessageBox();
+
+            // Start a new game loop after resetting everything
+            gameLoopInterval = setInterval(gameLoop, 1000);
+        }
+
+
+        /**
+         * Shows the custom message box.
+         * @param {string} title - The title of the message box.
+         * @param {string} content - The content/message.
+         * @param {boolean} isGameOver - True if this is a game over message.
+         */
+        function showMessageBox(title, content, isGameOver = false) {
+            messageBoxTitle.textContent = title;
+            messageBoxContent.textContent = content;
+            if (isGameOver) {
+                messageBoxCloseButton.textContent = 'Restart Game';
+                messageBoxCloseButton.onclick = () => {
+                    resetGame();
+                };
+            } else {
+                messageBoxCloseButton.textContent = 'Close';
+                messageBoxCloseButton.onclick = () => {
+                    hideMessageBox();
+                };
+            }
+            messageBox.classList.remove('hidden');
+        }
+
+        /**
+         * Hides the custom message box.
+         */
+        function hideMessageBox() {
+            messageBox.classList.add('hidden');
+        }
+
+        /**
+         * Updates all display elements (money, CPU temp, active tasks, upgrades).
+         */
+        function updateDisplay() {
+            moneyDisplay.textContent = Math.floor(gameState.money);
+            cpuTempDisplay.textContent = Math.floor(gameState.cpuTemp);
+            maxCpuTempDisplay.textContent = gameState.maxCpuTemp;
+
+            // Update temperature bar color and width
+            let tempPercentage = (gameState.cpuTemp / gameState.maxCpuTemp) * 100;
+            tempBar.style.width = `${Math.min(tempPercentage, 100)}%`;
+
+            if (tempPercentage < 50) {
+                tempBar.style.backgroundColor = '#4CAF50'; // Green
+            } else if (tempPercentage < 80) {
+                tempBar.style.backgroundColor = '#FFC107'; // Yellow
+            } else {
+                tempBar.style.backgroundColor = '#F44336'; // Red
+            }
+
+            const activeTaskCount = tasks.filter(t => t.active).length;
+            concurrentTasksDisplay.textContent = activeTaskCount;
+            maxConcurrentTasksDisplay.textContent = maxConcurrentTasks;
+
+            renderActiveTasks();
+            renderAvailableTasks(); // To update 'Start' button states
+            renderUpgrades(); // To update 'Buy' button states
+            renderAchievements(); // Always render achievements to reflect new unlocks
+        }
+
+        /**
+         * Renders the available tasks in the available tasks container.
+         */
+        function renderAvailableTasks() {
+            availableTasksContainer.innerHTML = '';
+            const activeTaskCount = tasks.filter(t => t.active).length;
+
+            tasks.forEach(task => {
+                const taskElement = document.createElement('div');
+                taskElement.classList.add(
+                    'task-item',
+                    'bg-white', 'p-4', 'rounded-lg', 'shadow-sm',
+                    'flex', 'flex-col', 'items-start', 'text-left',
+                    'border-2', 'border-green-200'
+                );
+                taskElement.innerHTML = `
+                    <h3 class="text-xl font-semibold text-gray-800">${task.name}</h3>
+                    <p class="text-sm text-gray-600 mb-2">${task.description}</p>
+                    <p class="text-md font-bold text-blue-700">Reward: $${task.reward} | Duration: ${task.baseDuration}s</p>
+                    <p class="text-sm text-gray-500 mb-3">Temp/s: +${task.tempIncrease}°C</p>
+                    <button class="start-task-button mt-auto px-5 py-2 rounded-full text-white font-bold transition-colors duration-200
+                        ${task.active || activeTaskCount >= maxConcurrentTasks ? 'bg-gray-400 disabled-button' : 'bg-blue-500 hover:bg-blue-600 active:bg-blue-700'}"
+                        data-task-id="${task.id}"
+                        ${task.active || activeTaskCount >= maxConcurrentTasks ? 'disabled' : ''}>
+                        ${task.active ? 'Running' : 'Start Task'}
+                    </button>
+                `;
+                availableTasksContainer.appendChild(taskElement);
+            });
+
+            document.querySelectorAll('.start-task-button').forEach(button => {
+                if (!button.disabled) { // Only add listener if not disabled
+                    button.addEventListener('click', (event) => {
+                        startTask(event.target.dataset.taskId);
+                    });
+                }
+            });
+        }
+
+        /**
+         * Renders active tasks with their progress bars.
+         * Clears the container and re-adds active tasks for robustness.
+         */
+        function renderActiveTasks() {
+            activeTasksContainer.innerHTML = ''; // Clear all existing content
+            const currentlyActiveTasks = tasks.filter(t => t.active);
+
+            if (currentlyActiveTasks.length === 0) {
+                noActiveTasksMessage.classList.remove('hidden');
+                activeTasksContainer.appendChild(noActiveTasksMessage);
+            } else {
+                noActiveTasksMessage.classList.add('hidden');
+                currentlyActiveTasks.forEach(task => {
+                    // Always create a new element as the container is cleared
+                    const taskElement = document.createElement('div');
+                    taskElement.classList.add(
+                        'active-task-item',
+                        'bg-indigo-100', 'p-3', 'rounded-lg', 'shadow-md', 'mb-2',
+                        'flex', 'flex-col', 'items-start'
+                    );
+                    taskElement.dataset.taskId = task.id; // Add data attribute for lookup/debugging
+
+                    // Generate inner HTML
+                    taskElement.innerHTML = `
+                        <h4 class="text-lg font-semibold text-indigo-800">${task.name}</h4>
+                        <div class="w-full bg-gray-300 rounded-full h-2 mt-1">
+                            <div class="task-progress-bar bg-indigo-500 h-full rounded-full" style="width: 0%;"></div>
+                        </div>
+                        <p class="text-xs text-gray-600 mt-1">
+                            <span class="task-progress-text">0%</span> Complete
+                        </p>
+                    `;
+
+                    activeTasksContainer.appendChild(taskElement);
+
+                    // Update progress bar for the newly added element
+                    const progressBar = taskElement.querySelector('.task-progress-bar');
+                    const progressText = taskElement.querySelector('.task-progress-text');
+
+                    const percentage = (task.progress / task.baseDuration) * 100;
+                    progressBar.style.width = `${Math.min(percentage, 100)}%`;
+                    progressText.textContent = `${Math.floor(percentage)}%`;
+                });
+            }
+        }
+
+
+        /**
+         * Renders all upgrade items in the upgrades container.
+         */
+        function renderUpgrades() {
+            upgradesContainer.innerHTML = '';
+            upgrades.forEach(upgrade => {
+                const upgradeElement = document.createElement('div');
+                upgradeElement.classList.add(
+                    'upgrade-item',
+                    'bg-white', 'p-4', 'rounded-lg', 'shadow-md',
+                    'flex', 'flex-col', 'items-start', 'text-left',
+                    'border-2', 'border-purple-200', 'transition-all', 'duration-200',
+                    'hover:shadow-lg', 'hover:border-purple-400'
+                );
+
+                upgradeElement.innerHTML = `
+                    <h3 class="text-xl font-semibold text-gray-800">${upgrade.name} (Level ${upgrade.level})</h3>
+                    <p class="text-sm text-gray-600 mb-2">${upgrade.description}</p>
+                    <p class="text-md font-bold text-purple-700 mb-2">Cost: $<span class="cost-display">${upgrade.cost}</span></p>
+                    <button class="buy-button mt-3 px-5 py-2 rounded-full text-white font-bold transition-colors duration-200
+                        ${gameState.money >= upgrade.cost ? 'bg-purple-500 hover:bg-purple-600 active:bg-purple-700' : 'bg-gray-400 disabled-button'}"
+                        data-upgrade-id="${upgrade.id}"
+                        ${gameState.money < upgrade.cost ? 'disabled' : ''}>
+                        Buy
+                    </button>
+                `;
+                upgradesContainer.appendChild(upgradeElement);
+            });
+
+            document.querySelectorAll('.buy-button').forEach(button => {
+                if (!button.disabled) {
+                    button.addEventListener('click', (event) => {
+                        buyUpgrade(event.target.dataset.upgradeId);
+                    });
+                }
+            });
+        }
+
+        /**
+         * Renders unlocked achievements.
+         */
+        function renderAchievements() {
+            achievementsContainer.innerHTML = '';
+            const unlockedAchievements = achievements.filter(a => a.unlocked);
+
+            if (unlockedAchievements.length === 0) {
+                noAchievementsMessage.classList.remove('hidden');
+                achievementsContainer.appendChild(noAchievementsMessage);
+            } else {
+                noAchievementsMessage.classList.add('hidden');
+                unlockedAchievements.forEach(achievement => {
+                    const achievementElement = document.createElement('div');
+                    achievementElement.classList.add(
+                        'achievement-item',
+                        'bg-yellow-100', 'p-3', 'rounded-lg', 'shadow-sm', 'border-2', 'border-yellow-300'
+                    );
+                    achievementElement.innerHTML = `
+                        <h4 class="text-lg font-semibold text-yellow-800">${achievement.name} <span class="text-sm text-yellow-600">(Unlocked!)</span></h4>
+                        <p class="text-sm text-gray-700">${achievement.description}</p>
+                    `;
+                    achievementsContainer.appendChild(achievementElement);
+                });
+            }
+        }
+
+        /**
+         * Starts a new task if conditions are met.
+         * @param {string} taskId - The ID of the task to start.
+         */
+        function startTask(taskId) {
+            if (gameState.gameOver) return;
+
+            const task = tasks.find(t => t.id === taskId);
+            const activeTaskCount = tasks.filter(t => t.active).length;
+
+            if (task && !task.active && activeTaskCount < maxConcurrentTasks) {
+                task.active = true;
+                task.progress = 0;
+                gameState.tempPerSecond += task.tempIncrease; // Add task's temp increase to overall
+                updateDisplay();
+            } else if (activeTaskCount >= maxConcurrentTasks) {
+                showMessageBox('Too Many Tasks!', `You can only run ${maxConcurrentTasks} task(s) at a time. Buy "Server Rack" upgrades to run more!`);
+            }
+        }
+
+        /**
+         * Completes a task, awards money, and resets its state.
+         * @param {object} task - The task object.
+         */
+        function completeTask(task) {
+            gameState.money += task.reward;
+            gameState.tempPerSecond -= task.tempIncrease; // Remove task's temp increase
+            gameState.completedTasksCount++; // Increment completed tasks for achievements
+
+            task.active = false;
+            task.progress = 0;
+
+            showMessageBox('Task Complete!', `You completed "${task.name}" and earned $${task.reward}!`);
+            updateDisplay();
+            checkAchievements(); // Check achievements after task completion
+        }
+
+        /**
+         * Handles buying an upgrade.
+         * @param {string} upgradeId - The ID of the upgrade to buy.
+         */
+        function buyUpgrade(upgradeId) {
+            if (gameState.gameOver) return;
+
+            const upgrade = upgrades.find(u => u.id === upgradeId);
+
+            if (upgrade && gameState.money >= upgrade.cost) {
+                gameState.money -= upgrade.cost;
+                upgrade.level++;
+                gameState.boughtUpgrades.push(upgrade.id); // Track bought upgrade for achievements
+
+                // Apply upgrade effects
+                if (upgrade.effect.coolingEfficiency) {
+                    gameState.coolingEfficiency += upgrade.effect.coolingEfficiency;
+                }
+                if (upgrade.effect.taskCompletionSpeed) {
+                    gameState.taskCompletionSpeed += upgrade.effect.taskCompletionSpeed;
+                }
+                if (upgrade.effect.maxActiveTasks) {
+                    maxConcurrentTasks += upgrade.effect.maxActiveTasks;
+                    showMessageBox('Upgrade Acquired!', `${upgrade.name} purchased! You can now run ${maxConcurrentTasks} task(s) simultaneously.`);
+                } else {
+                    showMessageBox('Upgrade Acquired!', `${upgrade.name} purchased!`);
+                }
+
+                // Increase cost for next level
+                upgrade.cost = Math.floor(upgrade.cost * 1.8);
+
+                updateDisplay();
+                checkAchievements(); // Check achievements after buying upgrade
+            }
+        }
+
+        /**
+         * Checks CPU temperature and handles game over condition.
+         */
+        function checkCpuTemp() {
+            if (gameState.cpuTemp >= gameState.maxCpuTemp && !gameState.gameOver) {
+                gameState.gameOver = true;
+                showMessageBox('Game Over!', 'Your CPU overheated! You need better cooling.', true);
+                clearInterval(gameLoopInterval); // Stop the game loop
+            }
+        }
+
+        /**
+         * Checks for unlocked achievements.
+         */
+        function checkAchievements() {
+            achievements.forEach(achievement => {
+                if (!achievement.unlocked) {
+                    let unlockedNow = false;
+                    if (achievement.criteria.money && gameState.money >= achievement.criteria.money) {
+                        unlockedNow = true;
+                    }
+                    if (achievement.criteria.completedTasks && gameState.completedTasksCount >= achievement.criteria.completedTasks) {
+                        unlockedNow = true;
+                    }
+                    if (achievement.criteria.upgradeBought && gameState.boughtUpgrades.includes(achievement.criteria.upgradeBought)) {
+                        unlockedNow = true;
+                    }
+
+                    if (unlockedNow) {
+                        achievement.unlocked = true;
+                        showMessageBox('Achievement Unlocked!', `${achievement.name}: "${achievement.description}"`);
+                        renderAchievements(); // Re-render achievements to show the new one
+                    }
+                }
+            });
+        }
+
+
+        /**
+         * Main game loop, runs every second.
+         * Handles temperature changes and task progress.
+         */
+        function gameLoop() {
+            if (gameState.gameOver) return;
+
+            // Temperature management
+            gameState.cpuTemp += gameState.tempPerSecond; // Increase temp from active tasks
+            gameState.cpuTemp -= gameState.coolingEfficiency; // Decrease temp from cooling
+
+            // Ensure temp doesn't go below 0
+            if (gameState.cpuTemp < 0) {
+                gameState.cpuTemp = 0;
+            }
+
+            checkCpuTemp();
+
+            // Task progress
+            tasks.forEach(task => {
+                if (task.active) {
+                    task.progress += gameState.taskCompletionSpeed;
+                    if (task.progress >= task.baseDuration) {
+                        completeTask(task);
+                    }
+                }
+            });
+
+            updateDisplay();
+            checkAchievements(); // Check achievements every tick
+        }
+
+        // Initialize the game when the DOM is fully loaded
+        document.addEventListener('DOMContentLoaded', () => {
+            resetGame(); // This will set initial state and start the gameLoop
+        });
+    </script>
+</body>
+</html>
